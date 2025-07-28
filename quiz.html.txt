@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Pagamentos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para o placeholder do input de data */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            filter: invert(0.5);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8">
+
+        <header class="mb-6 text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Controle de Pagamentos</h1>
+            <p class="text-gray-500 mt-1">Acompanhamento da venda do celular</p>
+        </header>
+
+        <!-- Seção de Resumo Financeiro -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="bg-blue-50 p-5 rounded-xl">
+                <h2 class="text-sm font-medium text-blue-800">Valor Total da Venda</h2>
+                <p id="total-value" class="text-2xl font-bold text-blue-900">R$ 1.500,00</p>
+            </div>
+            <div class="bg-green-50 p-5 rounded-xl">
+                <h2 class="text-sm font-medium text-green-800">Saldo Devedor</h2>
+                <p id="remaining-balance" class="text-2xl font-bold text-green-900">R$ 1.500,00</p>
+            </div>
+        </div>
+
+        <!-- Formulário para Adicionar Pagamento -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3">Adicionar Novo Pagamento</h3>
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-grow">
+                    <label for="payment-amount" class="sr-only">Valor do Pagamento</label>
+                    <input type="number" id="payment-amount" placeholder="Valor (ex: 250.50)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                </div>
+                <div class="flex-grow">
+                    <label for="payment-date" class="sr-only">Data do Pagamento</label>
+                    <input type="date" id="payment-date" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-gray-600">
+                </div>
+                <button id="add-payment-btn" class="w-full md:w-auto bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Adicionar
+                </button>
+            </div>
+        </div>
+
+        <!-- Histórico de Pagamentos -->
+        <div>
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">Histórico de Pagamentos</h3>
+            <div id="payment-history-container" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                <!-- Pagamentos serão inseridos aqui via JS -->
+                <p id="no-payments-msg" class="text-gray-500 text-center py-4">Nenhum pagamento registrado ainda.</p>
+            </div>
+        </div>
+
+        <!-- Botão de Reset -->
+        <div class="mt-8 text-center">
+            <button id="reset-btn" class="text-sm text-red-500 hover:text-red-700 hover:underline">
+                Limpar Dados e Recomeçar
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // Definições iniciais
+        const TOTAL_SALE_VALUE = 1500;
+        const STORAGE_KEY = 'paymentControlData';
+
+        // Elementos do DOM
+        const totalValueEl = document.getElementById('total-value');
+        const remainingBalanceEl = document.getElementById('remaining-balance');
+        const paymentAmountInput = document.getElementById('payment-amount');
+        const paymentDateInput = document.getElementById('payment-date');
+        const addPaymentBtn = document.getElementById('add-payment-btn');
+        const historyContainer = document.getElementById('payment-history-container');
+        const noPaymentsMsg = document.getElementById('no-payments-msg');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // Estado da aplicação
+        let state = {
+            remainingBalance: TOTAL_SALE_VALUE,
+            payments: []
+        };
+
+        // Função para formatar números como moeda brasileira (BRL)
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        // Função para formatar data para DD/MM/AAAA
+        function formatDate(dateString) {
+            if (!dateString) return 'Data não informada';
+            const [year, month, day] = dateString.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        // Função para salvar o estado no Local Storage
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
+
+        // Função para carregar o estado do Local Storage
+        function loadData() {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                state = JSON.parse(savedData);
+            }
+        }
+
+        // Função para renderizar o histórico de pagamentos
+        function renderHistory() {
+            // Limpa o histórico atual
+            historyContainer.innerHTML = '';
+
+            if (state.payments.length === 0) {
+                historyContainer.appendChild(noPaymentsMsg);
+                noPaymentsMsg.style.display = 'block';
+            } else {
+                noPaymentsMsg.style.display = 'none';
+                // Adiciona cada pagamento ao histórico
+                state.payments.forEach((payment, index) => {
+                    const paymentEl = document.createElement('div');
+                    paymentEl.className = 'bg-gray-50 p-3 rounded-lg flex justify-between items-center animate-fade-in';
+                    paymentEl.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">${formatCurrency(payment.amount)}</p>
+                            <p class="text-sm text-gray-500">${formatDate(payment.date)}</p>
+                        </div>
+                    `;
+                    historyContainer.appendChild(paymentEl);
+                });
+            }
+        }
+
+        // Função para atualizar a UI inteira
+        function updateUI() {
+            totalValueEl.textContent = formatCurrency(TOTAL_SALE_VALUE);
+            remainingBalanceEl.textContent = formatCurrency(state.remainingBalance);
+
+            // Muda a cor do saldo devedor se for zero
+            if (state.remainingBalance <= 0) {
+                remainingBalanceEl.classList.remove('text-green-900');
+                remainingBalanceEl.classList.add('text-blue-900');
+                remainingBalanceEl.parentElement.classList.remove('bg-green-50');
+                remainingBalanceEl.parentElement.classList.add('bg-blue-50');
+            } else {
+                remainingBalanceEl.classList.add('text-green-900');
+                remainingBalanceEl.classList.remove('text-blue-900');
+                remainingBalanceEl.parentElement.classList.add('bg-green-50');
+                remainingBalanceEl.parentElement.classList.remove('bg-blue-50');
+            }
+
+            renderHistory();
+        }
+        
+        // Função para adicionar um novo pagamento
+        function addPayment() {
+            const amount = parseFloat(paymentAmountInput.value);
+            const date = paymentDateInput.value;
+
+            if (isNaN(amount) || amount <= 0) {
+                alert('Por favor, insira um valor de pagamento válido.');
+                return;
+            }
+            
+            if (!date) {
+                 alert('Por favor, selecione a data do pagamento.');
+                return;
+            }
+
+            // Atualiza o estado
+            state.remainingBalance -= amount;
+            state.payments.unshift({ amount, date }); // Adiciona no início do array
+
+            // Salva e atualiza a UI
+            saveData();
+            updateUI();
+
+            // Limpa os campos do formulário
+            paymentAmountInput.value = '';
+            paymentDateInput.value = '';
+        }
+
+        // Função para resetar os dados
+        function resetData() {
+            if (confirm('Você tem certeza que deseja apagar todos os dados e recomeçar? Esta ação não pode ser desfeita.')) {
+                localStorage.removeItem(STORAGE_KEY);
+                // Reseta o estado para o inicial
+                state = {
+                    remainingBalance: TOTAL_SALE_VALUE,
+                    payments: []
+                };
+                updateUI();
+            }
+        }
+        
+        // Event Listeners
+        addPaymentBtn.addEventListener('click', addPayment);
+        resetBtn.addEventListener('click', resetData);
+
+        // Define a data de hoje como padrão no input de data
+        paymentDateInput.valueAsDate = new Date();
+
+        // Carrega os dados e inicializa a aplicação
+        window.addEventListener('load', () => {
+            loadData();
+            updateUI();
+
+            // Adiciona uma animação simples para a entrada dos elementos
+            document.querySelector('.w-full.max-w-2xl').classList.add('animate-fade-in');
+        });
+
+        // Adiciona um pouco de CSS para a animação
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .animate-fade-in {
+                animation: fadeIn 0.5s ease-out forwards;
+            }
+        `;
+        document.head.appendChild(style);
+
+    </script>
+</body>
+</html>
